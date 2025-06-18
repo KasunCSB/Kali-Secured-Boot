@@ -85,7 +85,7 @@ sudo mount -o loop iso-extract/efi.img efi-mount2
 ```
 
 ### 5. Inspect Signatures
-Usually you need to sign all the unsigned boot files including 'grubx64.efi' and 'vmlinuz' (kernel).
+Usually you need to sign all the unsigned boot files including `grubx64.efi` and `vmlinuz` (kernel).
 These files are typically found on following directories. (This subjects to change with the .iso image version)
 
 `/boot/grub/efi.img/`
