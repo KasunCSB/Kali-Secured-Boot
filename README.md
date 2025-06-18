@@ -104,7 +104,7 @@ Take a note on files missing a signature. Then sign them all using your own key.
 ```bash
 sudo sbsign --key secureboot-keys/MOK.key --cert secureboot-keys/MOK.crt   --output efi-mount/EFI/boot/grubx64.efi efi-mount/EFI/boot/grubx64.efi
 
-sudo sbsign --key secureboot-keys/MOK.key --cert secureboot-keys/MOK.crt   --output iso-extract/live/vmlinuz iso-extract/live/vmlinuz
+sudo sbsign --key secureboot-keys/MOK.key --cert secureboot-keys/MOK.crt   --output iso-extract/live/vmlinuz iso-extract/live/vmlinuz<version>
 ```
 
 ### 7. Optional: Add Key for Enrollment
