@@ -2,18 +2,21 @@
 
 set -e
 
-# === CONFIGURATION ===
-ISO_URL="https://cdimage.kali.org/kali-2025.2/kali-linux-2025.2-live-amd64.iso"
-ISO_SHA256="68f1117052bb0a6aa0fc0dee3b6525de1f5bccbd74c275fb050fe357a3f318a7"
-ISO_FILE="kali-linux-2025.2-live-amd64.iso"
+# --- Ensure script is run as root ---
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must be run as root. Please run with sudo or as root user."
+    exit 1
+fi
+
+# --- Configuration variables ---
 EXTRACT_DIR="iso-extract"
 KEY_DIR="secureboot-keys"
 EFI_MOUNT="efi-mount"
 EFI_MOUNT2="efi-mount2"
 SIGNED_ISO="kali-live-secureboot.iso"
 
-# === DEPENDENCY CHECK ===
-REQUIRED_CMDS=(wget sha256sum xorriso openssl sbsign sbverify mokutil sudo mount)
+# --- Check for required commands ---
+REQUIRED_CMDS=(wget sha256sum xorriso openssl sbsign sbverify mokutil mount)
 for cmd in "${REQUIRED_CMDS[@]}"; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "Missing dependency: $cmd"
@@ -22,21 +25,48 @@ for cmd in "${REQUIRED_CMDS[@]}"; do
     fi
 done
 
-# === 1. CHECK/DOWNLOAD ISO ===
-if [ ! -f "$ISO_FILE" ]; then
-    echo "ISO file not found. Downloading..."
+# --- ISO file selection and verification ---
+shopt -s nullglob
+iso_files=(*.iso)
+shopt -u nullglob
+
+if [ ${#iso_files[@]} -eq 0 ]; then
+    echo "No ISO file found in the current directory."
+    read -p "Enter ISO download URL: " ISO_URL
+    read -p "Enter expected SHA256 hash: " ISO_SHA256
+    read -p "Enter filename to save as (e.g. kali.iso): " ISO_FILE
     wget -O "$ISO_FILE" "$ISO_URL" || { echo "Download failed!"; exit 1; }
+    HASH=$(sha256sum "$ISO_FILE" | awk '{print $1}')
+    if [ "$HASH" != "$ISO_SHA256" ]; then
+        echo "Hash mismatch! Expected: $ISO_SHA256, Got: $HASH"
+        exit 1
+    fi
+    echo "ISO hash verified."
+elif [ ${#iso_files[@]} -eq 1 ]; then
+    ISO_FILE="${iso_files[0]}"
+    echo "Found ISO: $ISO_FILE"
+    read -p "Enter expected SHA256 hash for $ISO_FILE: " ISO_SHA256
+    HASH=$(sha256sum "$ISO_FILE" | awk '{print $1}')
+    if [ "$HASH" != "$ISO_SHA256" ]; then
+        echo "Hash mismatch! Expected: $ISO_SHA256, Got: $HASH"
+        exit 1
+    fi
+    echo "ISO hash verified."
+else
+    echo "Multiple ISO files found:"
+    select ISO_FILE in "${iso_files[@]}"; do
+        [ -n "$ISO_FILE" ] && break
+    done
+    read -p "Enter expected SHA256 hash for $ISO_FILE: " ISO_SHA256
+    HASH=$(sha256sum "$ISO_FILE" | awk '{print $1}')
+    if [ "$HASH" != "$ISO_SHA256" ]; then
+        echo "Hash mismatch! Expected: $ISO_SHA256, Got: $HASH"
+        exit 1
+    fi
+    echo "ISO hash verified."
 fi
 
-echo "Verifying ISO hash..."
-HASH=$(sha256sum "$ISO_FILE" | awk '{print $1}')
-if [ "$HASH" != "$ISO_SHA256" ]; then
-    echo "Hash mismatch! Expected: $ISO_SHA256, Got: $HASH"
-    exit 1
-fi
-echo "ISO hash verified."
-
-# === 2. EXTRACT ISO ===
+# --- Extract ISO contents ---
 if [ -d "$EXTRACT_DIR" ]; then
     read -p "'$EXTRACT_DIR' exists. Remove and re-extract? (y/N): " confirm
     [[ "$confirm" =~ ^[Yy]$ ]] && rm -rf "$EXTRACT_DIR" || { echo "Aborted."; exit 1; }
@@ -44,7 +74,7 @@ fi
 mkdir "$EXTRACT_DIR"
 xorriso -osirrox on -indev "$ISO_FILE" -extract / "$EXTRACT_DIR" || { echo "ISO extraction failed!"; exit 1; }
 
-# === 3. GENERATE KEYS ===
+# --- Generate Secure Boot keys if missing ---
 if [ ! -d "$KEY_DIR" ]; then
     mkdir "$KEY_DIR"
 fi
@@ -56,52 +86,67 @@ else
     echo "Keys already exist, skipping key generation."
 fi
 
-# === 4. MOUNT EFI PARTITIONS ===
-if [ -d "$EFI_MOUNT" ]; then sudo umount "$EFI_MOUNT" || true; rm -rf "$EFI_MOUNT"; fi
-if [ -d "$EFI_MOUNT2" ]; then sudo umount "$EFI_MOUNT2" || true; rm -rf "$EFI_MOUNT2"; fi
+# --- Mount EFI partitions from ISO ---
+if [ -d "$EFI_MOUNT" ]; then umount "$EFI_MOUNT" || true; rm -rf "$EFI_MOUNT"; fi
+if [ -d "$EFI_MOUNT2" ]; then umount "$EFI_MOUNT2" || true; rm -rf "$EFI_MOUNT2"; fi
 mkdir "$EFI_MOUNT" "$EFI_MOUNT2"
-sudo mount -o loop "$EXTRACT_DIR/boot/grub/efi.img" "$EFI_MOUNT"
-sudo mount -o loop "$EXTRACT_DIR/efi.img" "$EFI_MOUNT2"
+mount -o loop "$EXTRACT_DIR/boot/grub/efi.img" "$EFI_MOUNT"
+mount -o loop "$EXTRACT_DIR/efi.img" "$EFI_MOUNT2"
 
-# === 5. SIGN UNSIGNED FILES ===
+# --- Sign EFI binaries and kernel images ---
 echo "Signing EFI binaries and kernel..."
 
 # Sign grubx64.efi
 if [ -f "$EFI_MOUNT/EFI/boot/grubx64.efi" ]; then
-    sudo sbsign --key "$KEY_DIR/MOK.key" --cert "$KEY_DIR/MOK.crt" \
+    sbsign --key "$KEY_DIR/MOK.key" --cert "$KEY_DIR/MOK.crt" \
         --output "$EFI_MOUNT/EFI/boot/grubx64.efi" "$EFI_MOUNT/EFI/boot/grubx64.efi"
 else
     echo "Warning: grubx64.efi not found in $EFI_MOUNT/EFI/boot/"
 fi
 
-# Sign kernel
-if [ -f "$EXTRACT_DIR/live/vmlinuz" ]; then
-    sudo sbsign --key "$KEY_DIR/MOK.key" --cert "$KEY_DIR/MOK.crt" \
-        --output "$EXTRACT_DIR/live/vmlinuz" "$EXTRACT_DIR/live/vmlinuz"
-else
-    echo "Warning: vmlinuz not found in $EXTRACT_DIR/live/"
+# Sign all kernel images except the file named exactly 'vmlinuz'
+kernel_signed=false
+for kernel in "$EXTRACT_DIR"/live/vmlinuz*; do
+    [ -e "$kernel" ] || continue
+    if [ "$(basename "$kernel")" != "vmlinuz" ]; then
+        echo "Signing kernel: $(basename "$kernel")"
+        sbsign --key "$KEY_DIR/MOK.key" --cert "$KEY_DIR/MOK.crt" \
+            --output "$kernel" "$kernel"
+        kernel_signed=true
+    fi
+done
+
+if [ "$kernel_signed" = false ]; then
+    echo "Warning: No kernel images were signed. Please check your ISO contents."
 fi
 
-# (Optional) Copy MOK.cer for enrollment
-sudo cp "$KEY_DIR/MOK.cer" "$EFI_MOUNT/EFI/boot/"
+# Copy MOK certificate for later enrollment
+cp "$KEY_DIR/MOK.cer" "$EFI_MOUNT/EFI/boot/"
 
-# === 6. VERIFY SIGNATURES ===
+# --- Verify signatures of signed binaries ---
 echo "Verifying signatures..."
-sudo sbverify --cert "$KEY_DIR/MOK.crt" "$EFI_MOUNT/EFI/boot/grubx64.efi" || { echo "grubx64.efi signature verification failed!"; exit 1; }
-sudo sbverify --cert "$KEY_DIR/MOK.crt" "$EXTRACT_DIR/live/vmlinuz" || { echo "vmlinuz signature verification failed!"; exit 1; }
+sbverify --cert "$KEY_DIR/MOK.crt" "$EFI_MOUNT/EFI/boot/grubx64.efi" || { echo "grubx64.efi signature verification failed!"; exit 1; }
 
-# === 7. UNMOUNT EFI PARTITIONS ===
-sudo umount "$EFI_MOUNT"
-sudo umount "$EFI_MOUNT2"
+for kernel in "$EXTRACT_DIR"/live/vmlinuz*; do
+    [ -e "$kernel" ] || continue
+    if [ "$(basename "$kernel")" != "vmlinuz" ]; then
+        echo "Verifying kernel: $(basename "$kernel")"
+        sbverify --cert "$KEY_DIR/MOK.crt" "$kernel" || { echo "$(basename "$kernel") signature verification failed!"; exit 1; }
+    fi
+done
+
+# --- Unmount EFI partitions and clean up ---
+umount "$EFI_MOUNT"
+umount "$EFI_MOUNT2"
 rm -rf "$EFI_MOUNT" "$EFI_MOUNT2"
 
-# === 8. REPACK ISO ===
+# --- Repack the ISO with signed binaries ---
 echo "Repacking ISO..."
 cd "$EXTRACT_DIR"
 xorriso -as mkisofs \
   -iso-level 3 \
   -r -J -joliet-long \
-  -V "KALI_CUSTOM" \
+  -V "Kali Signed" \
   -append_partition 2 0xef boot/grub/efi.img \
   -partition_cyl_align all \
   -isohybrid-gpt-basdat \
@@ -111,13 +156,13 @@ cd ..
 
 echo "Signed ISO created: $SIGNED_ISO"
 
-# === 9. ENROLL MOK CERTIFICATE ===
+# --- Instructions for enrolling the Secure Boot certificate ---
 echo "To enroll the Secure Boot certificate, run:"
-echo "  sudo mokutil --import $KEY_DIR/MOK.cer"
+echo "  mokutil --import $KEY_DIR/MOK.cer"
 echo "You will be prompted for a password. After reboot, enroll the key in the MOK Manager."
 read -p "Reboot now to enroll the key? (y/N): " confirm
 if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    sudo reboot
+    reboot
 else
     echo "Please reboot manually to complete MOK enrollment."
 fi
