@@ -34,7 +34,7 @@ If you prefer option 1, head over to your BIOS, look for an option (in the Secur
 Sign Kali’s bootloader files and kernel with your own certificate, rebuild the ISO with the signed files, and enroll the certificate via MOK Manager.
 
 ## Requirements
-- Kali live ISO (from the official Kali website)
+- Kali live ISO (from the official [Kali website](https://www.kali.org/get-kali/#kali-live))
 - A Linux system (e.g., Ubuntu, Kali, Debian)
 - USB flash drive (8GB+)
 - Internet connection
