@@ -173,4 +173,3 @@ Reboot, enroll the key via MOK Manager, and you’re done.
     Alternatively, you can create a Offline Key on the same registry tree, and adding the same DWORD name, and modify value to `1` under `Offline`.
 
 5. I've added my own signed BL files from the Kali Live image (v2025.1a) here. So you can also replace those files on the original ISO and repack skipping signing steps.
-6. Upon signing kernel, you might need to sign the file which filename starting `vmlinuz*`
