@@ -184,4 +184,5 @@ Reboot, enroll the key via MOK Manager, and you’re done.
    
     Alternatively, you can create a Offline Key on the same registry tree, and adding the same DWORD name, and modify value to `1` under `Offline`.
 
-5. I've added my own signed BL files from the Kali Live image (v2025.1a) here. So you can also replace those files on the original ISO and repack skipping signing steps.
+4. I've added my own signed BL files from the Kali Live image (v2025.1a) here. So you can also replace those files on the original ISO and repack skipping signing steps.
+5. If you encounter problems with `Kali Shared` partition in Windows, simply format it with `FAT` in your linux system, then on Windows, format again to `NTFS` or `exFAT`. (If you want to eliminate the 4GB file size limit of FAT) - Use `NTFS` for maximum compatibility.
