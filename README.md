@@ -118,7 +118,7 @@ sudo sbverify --cert secureboot-keys/MOK.crt efi-mount/EFI/boot/grubx64.efi
 # You should see: Signature verification OK
 ```
 
-### 8.5. (Optional) Skip GRUB Bootloader Menu
+### Skip GRUB Bootloader Menu (Optional) 
 
 If you want to skip the GRUB bootloader menu and boot directly into Kali, add the following lines at the **top** of the `grub.cfg` file located at `/boot/grub/`:
 
