@@ -118,6 +118,18 @@ sudo sbverify --cert secureboot-keys/MOK.crt efi-mount/EFI/boot/grubx64.efi
 # You should see: Signature verification OK
 ```
 
+### 8.5. (Optional) Skip GRUB Bootloader Menu
+
+If you want to skip the GRUB bootloader menu and boot directly into Kali, add the following lines at the **top** of the `grub.cfg` file located at `/boot/grub/`:
+
+```bash
+# Set below values to skip grub bootloader menu
+set timeout=0
+set hidden_timeout=0
+set hidden_timeout_quiet=true
+set default=0
+```
+
 ### 9. Repack the Modified ISO
 Now you're ready to repack the modified ISO image. Here, we create a UEFI-bootable ISO image, omitting MBR option. As the original Kali ISO both carry UEFI and Legacy support, it creates additional EFI Partitions upon flashing, making conflicts with the later `Kali Shared` USB Partition creation.
 

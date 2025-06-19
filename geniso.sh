@@ -140,6 +140,28 @@ umount "$EFI_MOUNT"
 umount "$EFI_MOUNT2"
 rm -rf "$EFI_MOUNT" "$EFI_MOUNT2"
 
+# --- Optionally skip GRUB menu ---
+read -p "Do you want to skip the GRUB bootloader menu? (y/N): " skip_grub
+if [[ "$skip_grub" =~ ^[Yy]$ ]]; then
+    GRUB_CFG="$EXTRACT_DIR/boot/grub/grub.cfg"
+    if [ -f "$GRUB_CFG" ]; then
+        TMP_GRUB_CFG="${GRUB_CFG}.tmp"
+        {
+            echo "# Set below values to skip grub bootloader menu"
+            echo "set timeout=0"
+            echo "set hidden_timeout=0"
+            echo "set hidden_timeout_quiet=true"
+            echo "set default=0"
+            echo
+            cat "$GRUB_CFG"
+        } > "$TMP_GRUB_CFG"
+        mv "$TMP_GRUB_CFG" "$GRUB_CFG"
+        echo "GRUB menu will be skipped."
+    else
+        echo "Warning: $GRUB_CFG not found. Skipping GRUB menu modification."
+    fi
+fi
+
 # --- Repack the ISO with signed binaries ---
 echo "Repacking ISO..."
 cd "$EXTRACT_DIR"
